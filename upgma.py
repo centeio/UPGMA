@@ -147,14 +147,6 @@ def buildtreeheap(seq1):
     return clusters[0]
 
 if __name__ == '__main__':
-<<<<<<< HEAD
-    seq1 = "ACGCG"
-
-    buildtreeheap(seq1)
-
-
-
-=======
     #seq1 = read_fasta(read_file('inputs/Q61743.fasta'))
     seq1 = "MLSRKGIIPEEYVLTRLAEDPAEPRY"
     result = buildtree(seq1)
@@ -162,4 +154,3 @@ if __name__ == '__main__':
     tree = Phylo.read(StringIO(string+';'),"newick")
     Phylo.draw(tree)
     
->>>>>>> a9067f9e958ec94ee7111534b2fe8814c21751b0
