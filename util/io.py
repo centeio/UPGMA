@@ -7,6 +7,13 @@ def write_file(path,data):
     f.write(str(data))
     f.close()
 
+def read_directory(path):
+    sequences = []
+    for filename in os.listdir(path):
+        sequences.append((filename,read_fasta(read_file(path+"/"+filename))))
+
+    return sequences
+
 def read_file(path):
     filename = os.path.join(fileDir, path)
     f = open(filename, 'r+')

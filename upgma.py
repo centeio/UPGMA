@@ -1,6 +1,5 @@
 from matrices import *
-from Bio import pairwise2
-from Bio import Phylo
+from Bio import pairwise2, Phylo
 from Bio.Phylo.TreeConstruction import DistanceCalculator
 from io import StringIO
 from util.io import *
@@ -8,7 +7,15 @@ import sys
 import itertools
 from heapq import heappush, heappop
 
-DEBUG = True
+DEBUG = False
+
+class Seq(object):
+    def __init__(self, name, sequence):
+        self.name = name
+        self.sequence = sequence
+    
+    def __repr__(self):
+        return self.name
 
 class Tree(object):
     def __init__(self, left = None, right = None, data = None, height = None):
@@ -47,7 +54,7 @@ aux = {}
 def d(ci, cj):
     calc = DistanceCalculator(model='blosum62')
     
-    alignment = pairwise2.align.globalxx(ci.data,cj.data)[0]
+    alignment = pairwise2.align.globalxx(ci.data.sequence,cj.data.sequence)[0]
 
     seq1 = alignment[0]
     seq2 = alignment[1]
@@ -61,17 +68,14 @@ def d(ci, cj):
 
     return dist
 
-def buildtree(seq1):
+def buildtree(sequences):
     clusters = []
 
-    #Dar a cada sequencia o seu proprio cluster
-    #definir uma folha para cada sequencia e colocar na altura 0
-
-    for i in range(0, len(seq1)):
-        clusters.append(Tree(data = seq1[i], height = 0))
+    for i in range(0, len(sequences)):
+        clusters.append(Tree(data = sequences[i], height = 0))
     if(DEBUG):
         print(clusters)
-    #enquanto ha mais que 2 clusters
+    
     min_dij = sys.maxsize
     ci = Tree()
     cj = Tree()
@@ -81,20 +85,20 @@ def buildtree(seq1):
         l,r = min(comb,key=lambda e: d(e[0],e[1]))
         clusters.remove(l)
         clusters.remove(r)
-        clusters.append(Tree(l, r, l.data + r.data,d(l,r)/2))
+        newSeq = Seq(l.data.name+"&"+r.data.name, l.data.sequence+r.data.sequence)
+        clusters.append(Tree(l, r, newSeq ,d(l,r)/2))
         if(DEBUG):
             print(clusters)
 
-    #determinar dois clusters i e j, com a menor dij
-    #definir novo cluster Ck com Clusters i e j e criar nos na altura dij/2
-    #substituir clusters i e j por Ck
+    
+    newSeq = Seq(   clusters[0].data.name+"&"+clusters[1].data.name, #name
+                    clusters[0].data.sequence+clusters[1].data.sequence #sequence
+                )
 
-    #dado um novo cluster ck podemos calcular a sua distancia a todos os outros
+    final = Tree(clusters[0],clusters[1], newSeq,d(clusters[0],clusters[1])/2)
+    return final
 
-    final = Tree(clusters[0],clusters[1], clusters[0].data + clusters[1].data, d(clusters[0],clusters[1])/2)
-    print(final)
-
-def buildtreeheap(seq1):
+def buildtreeheap(sequences):
     heap = []
     bitmap = {}
 
@@ -103,8 +107,8 @@ def buildtreeheap(seq1):
     #Dar a cada sequencia o seu proprio cluster
     #definir uma folha para cada sequencia e colocar na altura 0
 
-    for i in range(0, len(seq1)):
-        clusters.append(Tree(data = seq1[i], height = 0))
+    for i in range(0, len(sequences)):
+        clusters.append(Tree(data = sequences[i], height = 0))
     if(DEBUG):
         print(clusters)
     #enquanto ha mais que 2 clusters
@@ -128,7 +132,7 @@ def buildtreeheap(seq1):
         while(bitmap[newcluster.data] != "on"):
             newcluster = heappop(heap)
 
-        print(newcluster)
+        
         clusters.append(newcluster)
         clusters.remove(newcluster.left)
         clusters.remove(newcluster.right)
@@ -142,14 +146,13 @@ def buildtreeheap(seq1):
                     bitmap[key] = "off"
 
     final = Tree(clusters[0],clusters[1], clusters[0].data + clusters[1].data, d(clusters[0],clusters[1])/2)
-    print(final)
     
-    return clusters[0]
+    return final
 
 if __name__ == '__main__':
-    #seq1 = read_fasta(read_file('inputs/Q61743.fasta'))
-    seq1 = "MLSRKGIIPEEYVLTRLAEDPAEPRY"
-    result = buildtree(seq1)
+
+    sequencias = [Seq(filename[0:-6],sequence) for (filename,sequence) in read_directory("inputs")]
+    result = buildtree(sequencias)
     string = toNewick(result)
     tree = Phylo.read(StringIO(string+';'),"newick")
     Phylo.draw(tree)
