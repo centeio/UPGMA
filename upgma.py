@@ -31,7 +31,7 @@ class Tree(object):
 
     def __eq__(self, other):
         if self.height == 0 or other.height ==0:
-            return self.data.name == other.data.name
+            return self.data == other.data
 
         return self.left == other.left and self.right == self.right 
              
@@ -53,23 +53,6 @@ def toNewick(tree):
     
     return "("+toNewick(tree.left)+":"+currentMinusLeft+")"+"("+toNewick(tree.right)+":"+currentMinusRight+")"
     
-def d(ci, cj):
-    calc = DistanceCalculator(model='blosum62')
-    
-    alignment = pairwise2.align.globalxx(ci.data.sequence,cj.data.sequence)[0]
-
-    seq1 = alignment[0]
-    seq2 = alignment[1]
-    
-    #An improvement for preventing re-calculating
-    try:
-        dist = aux[(seq1,seq2)]
-    except KeyError as ex:
-        aux[(seq1,seq2)] = calc._pairwise(seq1, seq2)
-        dist = aux[(seq1,seq2)]
-
-    return dist
-
 
 def getDistanceMatrix(msaPath):
     aln = AlignIO.read(open(msaPath), 'phylip')
@@ -80,7 +63,7 @@ def getDistanceMatrix(msaPath):
 def distance(t1,t2):
     ci = t1.clusters
     cj = t2.clusters
-    comb = [DM["sp|{}|".format(p),"sp|{}|".format(q)] for p in ci for q in cj]
+    comb = [DM[p,q] for p in ci for q in cj]
 
     length = len(comb)
     
@@ -107,9 +90,7 @@ def buildtreeheap(sequences):
         comb = list(itertools.combinations(clusters, 2))
         trees = [
                 Tree(left=x, right=y,
-                    data=Seq(x.data.name+"&"+y.data.name, #name
-                        x.data.sequence+y.data.sequence #sequence
-                        ),
+                    data=x.data+"&"+y.data,
                     height=distance(x,y)/2,
                     clusters= x.clusters + y.clusters                   
                     ) for (x,y) in comb
@@ -121,11 +102,11 @@ def buildtreeheap(sequences):
         for tree in trees:
             heappush(heap,tree)
             t = tree
-            bitmap[t.data.name] = "on"
+            bitmap[t.data] = "on"
 
         newcluster = heappop(heap)
 
-        while(bitmap[newcluster.data.name] != "on"):
+        while(bitmap[newcluster.data] != "on"):
             newcluster = heappop(heap)
         
         clusters.append(newcluster)
@@ -137,20 +118,19 @@ def buildtreeheap(sequences):
         appears_on = [key for key in bitmap.keys() if bitmap[key] == "on"]
         
         for key in appears_on:
-            if newcluster.left.data.name in key or newcluster.right.data.name in key:
+            if newcluster.left.data in key or newcluster.right.data in key:
                 bitmap[key] = "off"
     
-    newSeq = Seq(   clusters[0].data.name+"&"+clusters[1].data.name, #name
-                    clusters[0].data.sequence+clusters[1].data.sequence #sequence
-                )
+    
 
-    final = Tree(clusters[0],clusters[1], newSeq,distance(clusters[0],clusters[1])/2,clusters = clusters[0].clusters + clusters[1].clusters)
+    final = Tree(clusters[0],clusters[1], clusters[0].data+"&"+clusters[1].data,distance(clusters[0],clusters[1])/2,clusters = clusters[0].clusters + clusters[1].clusters)
     return final
     
 if __name__ == '__main__':
 
-    sequencias = [Seq(filename[0:-6],sequence) for (filename,sequence) in read_directory("inputs")]
+    #sequencias = [Seq(filename[0:-6],sequence) for (filename,sequence) in read_directory("inputs")]
     DM = getDistanceMatrix('./aligned.phy')
+    sequencias = DM.names
     result = buildtreeheap(sequencias)
     string = toNewick(result)
     tree = Phylo.read(StringIO(string+';'),"newick")
