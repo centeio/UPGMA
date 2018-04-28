@@ -1,5 +1,5 @@
 from matrices import *
-from Bio import pairwise2, Phylo
+from Bio import pairwise2, Phylo, AlignIO
 from Bio.Phylo.TreeConstruction import DistanceCalculator
 from io import StringIO
 from util.io import *
@@ -7,7 +7,8 @@ import sys
 import itertools
 from heapq import heappush, heappop
 
-DEBUG = False
+DEBUG = True
+DM = {}
 
 class Seq(object):
     def __init__(self, name, sequence):
@@ -18,18 +19,19 @@ class Seq(object):
         return self.name
 
 class Tree(object):
-    def __init__(self, left = None, right = None, data = None, height = None):
+    def __init__(self, left = None, right = None, data = None, height = None, clusters = []):
         self.left = left
         self.right = right
         self.data = data
         self.height = height
+        self.clusters = clusters
 
     def __lt__(self, other):
         return self.height * 2 < other.height * 2
 
     def __eq__(self, other):
-        if len(self.data) == 1 or len(other.data) == 1:
-            return self.data == other.data
+        if self.height == 0 or other.height ==0:
+            return self.data.name == other.data.name
 
         return self.left == other.left and self.right == self.right 
              
@@ -40,17 +42,17 @@ class Tree(object):
 
 
 def toNewick(tree):
-    
     if(tree is None):
         return ''
     
     if(tree.left is None and tree.right is None):
-        return str(tree.data)
-        
-    return "("+toNewick(tree.left)+")("+toNewick(tree.right)+")"
-    
-aux = {}
+        return str(tree.data)  
 
+    currentMinusLeft = str(tree.height - tree.left.height)
+    currentMinusRight = str(tree.height - tree.right.height)
+    
+    return "("+toNewick(tree.left)+":"+currentMinusLeft+")"+"("+toNewick(tree.right)+":"+currentMinusRight+")"
+    
 def d(ci, cj):
     calc = DistanceCalculator(model='blosum62')
     
@@ -68,35 +70,22 @@ def d(ci, cj):
 
     return dist
 
-def buildtree(sequences):
-    clusters = []
 
-    for i in range(0, len(sequences)):
-        clusters.append(Tree(data = sequences[i], height = 0))
-    if(DEBUG):
-        print(clusters)
+def getDistanceMatrix(msaPath):
+    aln = AlignIO.read(open(msaPath), 'phylip')
+    calculator = DistanceCalculator('blosum62')
+    return calculator.get_distance(aln)
+
+
+def distance(t1,t2):
+    ci = t1.clusters
+    cj = t2.clusters
+    comb = [DM["sp|{}|".format(p),"sp|{}|".format(q)] for p in ci for q in cj]
+
+    length = len(comb)
     
-    min_dij = sys.maxsize
-    ci = Tree()
-    cj = Tree()
+    return sum(comb) / length
 
-    while (len(clusters) > 2):
-        comb = list(itertools.combinations(clusters, 2))
-        l,r = min(comb,key=lambda e: d(e[0],e[1]))
-        clusters.remove(l)
-        clusters.remove(r)
-        newSeq = Seq(l.data.name+"&"+r.data.name, l.data.sequence+r.data.sequence)
-        clusters.append(Tree(l, r, newSeq ,d(l,r)/2))
-        if(DEBUG):
-            print(clusters)
-
-    
-    newSeq = Seq(   clusters[0].data.name+"&"+clusters[1].data.name, #name
-                    clusters[0].data.sequence+clusters[1].data.sequence #sequence
-                )
-
-    final = Tree(clusters[0],clusters[1], newSeq,d(clusters[0],clusters[1])/2)
-    return final
 
 def buildtreeheap(sequences):
     heap = []
@@ -108,51 +97,61 @@ def buildtreeheap(sequences):
     #definir uma folha para cada sequencia e colocar na altura 0
 
     for i in range(0, len(sequences)):
-        clusters.append(Tree(data = sequences[i], height = 0))
+        clusters.append(Tree(data = sequences[i], height = 0, clusters=[sequences[i]]))
     if(DEBUG):
         print(clusters)
     #enquanto ha mais que 2 clusters
 
-    
-
     while (len(clusters) > 2):
         #fazer tuplos de todos os clusters possíveis com distancia associada -> (dij, Tree(di,dj))
-        listadetuplos = [Tree(x,y,x.data+y.data,d(x,y),d(x,y)/2) for (x,y) in list(itertools.combinations(clusters, 2))]
+        comb = list(itertools.combinations(clusters, 2))
+        trees = [
+                Tree(left=x, right=y,
+                    data=Seq(x.data.name+"&"+y.data.name, #name
+                        x.data.sequence+y.data.sequence #sequence
+                        ),
+                    height=distance(x,y)/2,
+                    clusters= x.clusters + y.clusters                   
+                    ) for (x,y) in comb
+                ]
+
+        
         #incluir tuplos na heap
         #fazer, paralelamente, um dicionario com correspondencia de validade do tuplo; 'abcd' -> 'on'
-        for tree in listadetuplos:
+        for tree in trees:
             heappush(heap,tree)
             t = tree
-            bitmap[t.data] = "on"
+            bitmap[t.data.name] = "on"
 
         newcluster = heappop(heap)
 
-        #fazer pop da heap ate sair um cujo data corresponda a 'on'
-
-        while(bitmap[newcluster.data] != "on"):
+        while(bitmap[newcluster.data.name] != "on"):
             newcluster = heappop(heap)
-
         
         clusters.append(newcluster)
         clusters.remove(newcluster.left)
         clusters.remove(newcluster.right)
 
+        
         #invalidar ('off') todos os elementos do dicionario cuja chave contenha um ou mais elementos do tuplo de cima
         appears_on = [key for key in bitmap.keys() if bitmap[key] == "on"]
-
-        for l in newcluster.data:
-            for key in appears_on:
-                if l in key:
-                    bitmap[key] = "off"
-
-    final = Tree(clusters[0],clusters[1], clusters[0].data + clusters[1].data, d(clusters[0],clusters[1])/2)
+        
+        for key in appears_on:
+            if newcluster.left.data.name in key or newcluster.right.data.name in key:
+                bitmap[key] = "off"
     
-    return final
+    newSeq = Seq(   clusters[0].data.name+"&"+clusters[1].data.name, #name
+                    clusters[0].data.sequence+clusters[1].data.sequence #sequence
+                )
 
+    final = Tree(clusters[0],clusters[1], newSeq,distance(clusters[0],clusters[1])/2,clusters = clusters[0].clusters + clusters[1].clusters)
+    return final
+    
 if __name__ == '__main__':
 
     sequencias = [Seq(filename[0:-6],sequence) for (filename,sequence) in read_directory("inputs")]
-    result = buildtree(sequencias)
+    DM = getDistanceMatrix('./aligned.phy')
+    result = buildtreeheap(sequencias)
     string = toNewick(result)
     tree = Phylo.read(StringIO(string+';'),"newick")
     Phylo.draw(tree)
