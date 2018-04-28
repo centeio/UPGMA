@@ -129,7 +129,7 @@ def buildtreeheap(sequences):
 if __name__ == '__main__':
 
     #sequencias = [Seq(filename[0:-6],sequence) for (filename,sequence) in read_directory("inputs")]
-    DM = getDistanceMatrix('./aligned.phy')
+    DM = getDistanceMatrix('./phy/ema.phy')
     sequencias = DM.names
     result = buildtreeheap(sequencias)
     string = toNewick(result)
