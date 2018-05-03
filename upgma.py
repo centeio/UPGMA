@@ -5,9 +5,10 @@ from io import StringIO
 from util.io import *
 import sys
 import itertools
+import time
 from heapq import heappush, heappop
 
-DEBUG = True
+DEBUG = False
 DM = {}
 
 class Seq(object):
@@ -83,11 +84,13 @@ def buildtreeheap(sequences):
         clusters.append(Tree(data = sequences[i], height = 0, clusters=[sequences[i]]))
     if(DEBUG):
         print(clusters)
-    #enquanto ha mais que 2 clusters
+    #fazer tuplos de todos os clusters possíveis com distancia associada -> (dij, Tree(di,dj))
+    
+    comb = list(itertools.combinations(clusters, 2))
 
+
+    #enquanto ha mais que 2 clusters
     while (len(clusters) > 2):
-        #fazer tuplos de todos os clusters possíveis com distancia associada -> (dij, Tree(di,dj))
-        comb = list(itertools.combinations(clusters, 2))
         trees = [
                 Tree(left=x, right=y,
                     data=x.data+"&"+y.data,
@@ -95,8 +98,6 @@ def buildtreeheap(sequences):
                     clusters= x.clusters + y.clusters                   
                     ) for (x,y) in comb
                 ]
-
-        
         #incluir tuplos na heap
         #fazer, paralelamente, um dicionario com correspondencia de validade do tuplo; 'abcd' -> 'on'
         for tree in trees:
@@ -109,11 +110,13 @@ def buildtreeheap(sequences):
         while(bitmap[newcluster.data] != "on"):
             newcluster = heappop(heap)
         
-        clusters.append(newcluster)
         clusters.remove(newcluster.left)
         clusters.remove(newcluster.right)
 
-        
+        #fazer tuplos de todos os clusters possíveis com distancia associada -> (dij, Tree(di,dj))
+        comb = [(newcluster, r) for r in clusters]
+        clusters.append(newcluster)
+
         #invalidar ('off') todos os elementos do dicionario cuja chave contenha um ou mais elementos do tuplo de cima
         appears_on = [key for key in bitmap.keys() if bitmap[key] == "on"]
         
@@ -125,13 +128,47 @@ def buildtreeheap(sequences):
 
     final = Tree(clusters[0],clusters[1], clusters[0].data+"&"+clusters[1].data,distance(clusters[0],clusters[1])/2,clusters = clusters[0].clusters + clusters[1].clusters)
     return final
+
+# without HEAP
+def buildtree(sequences):
+    clusters = []
+
+    for i in range(0, len(sequences)):
+        clusters.append(Tree(data = sequences[i], height = 0, clusters=[sequences[i]]))
+    if(DEBUG):
+        print(clusters)
+    
+    min_dij = sys.maxsize
+    ci = Tree()
+    cj = Tree()
+
+    while (len(clusters) > 2):
+        comb = list(itertools.combinations(clusters, 2))
+        l,r = min(comb,key=lambda e: distance(e[0],e[1]))
+        clusters.remove(l)
+        clusters.remove(r)
+        clusters.append(Tree(left=l, right=r,
+                            data=l.data+"&"+r.data,
+                            height=distance(l,r)/2,
+                            clusters= l.clusters + r.clusters                   
+                            ))
+        if(DEBUG):
+            print(clusters)
+
+    
+
+
+    final = Tree(clusters[0],clusters[1], clusters[0].data+"&"+clusters[1].data,distance(clusters[0],clusters[1])/2,clusters = clusters[0].clusters + clusters[1].clusters)
+    return final
+
     
 if __name__ == '__main__':
 
-    #sequencias = [Seq(filename[0:-6],sequence) for (filename,sequence) in read_directory("inputs")]
     DM = getDistanceMatrix('./phy/ema.phy')
+
     sequencias = DM.names
-    result = buildtreeheap(sequencias)
+    result = buildtree(sequencias)
+
     string = toNewick(result)
     tree = Phylo.read(StringIO(string+';'),"newick")
     Phylo.draw(tree)
